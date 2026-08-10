@@ -10,117 +10,69 @@ import numpy as np
 import os
 import urllib.request
 
-import torch
-
-
-# کاهش مصرف RAM و CPU
-torch.set_num_threads(1)
-
 
 app = FastAPI(
-    title="Kazem Delsooz AI Vision API",
-    version="2.0"
+    title="Face Detection API",
+    version="1.0"
 )
 
 
+# ==============================
+# Face Model
+# ==============================
 
-# =====================================================
-# Model Settings
-# =====================================================
-
-FACE_MODEL_PATH = "yolov8n-face.pt"
+MODEL_PATH = "yolov8n-face.pt"
 
 
-FACE_MODEL_URL = (
+MODEL_URL = (
     "https://huggingface.co/Autsadin/yolov8-face/"
     "resolve/main/yolov8n-face.pt"
 )
 
 
 
-# =====================================================
-# Download Face Model
-# =====================================================
+def download_model():
 
-def download_face_model():
+    if not os.path.exists(MODEL_PATH):
 
-    if not os.path.exists(FACE_MODEL_PATH):
-
-        print("Downloading Face Model...")
+        print("Downloading face model...")
 
         urllib.request.urlretrieve(
-            FACE_MODEL_URL,
-            FACE_MODEL_PATH
+            MODEL_URL,
+            MODEL_PATH
         )
 
-        print("Face Model Downloaded")
+        print("Model downloaded")
 
     else:
 
-        print("Face Model Exists")
+        print("Model already exists")
 
 
 
-download_face_model()
+download_model()
 
 
 
-# =====================================================
-# Lazy Loading Models
-# =====================================================
+# ==============================
+# Load Model
+# ==============================
 
-face_model = None
-object_model = None
-
+print("Loading YOLO Face Model...")
 
 
-def get_face_model():
-
-    global face_model
-
-
-    if face_model is None:
-
-        print("Loading YOLO Face Model...")
-
-        face_model = YOLO(
-            FACE_MODEL_PATH
-        )
+model = YOLO(
+    MODEL_PATH
+)
 
 
-        print("Face Model Loaded")
-
-
-    return face_model
+print("Face Model Ready")
 
 
 
-
-def get_object_model():
-
-    global object_model
-
-
-    if object_model is None:
-
-        print("Loading YOLO Object Model...")
-
-        object_model = YOLO(
-            "yolov8n.pt"
-        )
-
-
-        print("Object Model Loaded")
-
-
-    return object_model
-
-
-
-
-# =====================================================
+# ==============================
 # Home
-# =====================================================
+# ==============================
 
 @app.get("/")
 def home():
@@ -128,46 +80,41 @@ def home():
     return {
 
         "status":
-        "AI Vision API Running",
+        "Face Detection API Running",
 
-        "developer":
-        "Kazem Delsooz",
-
-        "models":[
-
-            "YOLOv8 Face Detection",
-
-            "YOLOv8 Object Detection"
-
-        ]
+        "model":
+        "YOLOv8 Face Detection"
 
     }
 
 
 
-# =====================================================
-# Health Check
-# =====================================================
+# ==============================
+# Health
+# ==============================
 
 @app.get("/health")
 def health():
 
     return {
 
-        "status":"healthy"
+        "status":
+        "healthy"
 
     }
 
 
 
 
-# =====================================================
-# Face Detection
-# =====================================================
+# ==============================
+# Detection
+# ==============================
 
 @app.post("/detect")
-async def detect_face(
+async def detect(
+
     file: UploadFile = File(...)
+
 ):
 
 
@@ -176,16 +123,14 @@ async def detect_face(
 
 
     image = Image.open(
+
         BytesIO(image_bytes)
+
     ).convert("RGB")
 
 
 
     img = np.array(image)
-
-
-
-    model = get_face_model()
 
 
 
@@ -199,12 +144,14 @@ async def detect_face(
 
 
 
-    output_image = results[0].plot()
+    result_image = results[0].plot()
 
 
 
     output = Image.fromarray(
-        output_image
+
+        result_image
+
     )
 
 
@@ -229,8 +176,10 @@ async def detect_face(
 
 
 
-    count = len(
+    faces = len(
+
         results[0].boxes
+
     )
 
 
@@ -244,111 +193,7 @@ async def detect_face(
         headers={
 
             "faces-detected":
-            str(count)
-
-        }
-
-    )
-
-
-
-
-
-# =====================================================
-# Object Detection
-# =====================================================
-
-@app.post("/object")
-async def detect_object(
-
-    file: UploadFile = File(...)
-
-):
-
-
-    image_bytes = await file.read()
-
-
-
-    image = Image.open(
-
-        BytesIO(image_bytes)
-
-    ).convert("RGB")
-
-
-
-    img = np.array(image)
-
-
-
-
-    model = get_object_model()
-
-
-
-
-    results = model(
-
-        img,
-
-        conf=0.35
-
-    )
-
-
-
-
-    output_image = results[0].plot()
-
-
-
-    output = Image.fromarray(
-
-        output_image
-
-    )
-
-
-
-    buffer = BytesIO()
-
-
-
-    output.save(
-
-        buffer,
-
-        format="JPEG",
-
-        quality=95
-
-    )
-
-
-
-    buffer.seek(0)
-
-
-
-    count = len(
-
-        results[0].boxes
-
-    )
-
-
-
-    return StreamingResponse(
-
-        buffer,
-
-        media_type="image/jpeg",
-
-        headers={
-
-            "objects-detected":
-            str(count)
+            str(faces)
 
         }
 
