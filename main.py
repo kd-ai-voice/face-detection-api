@@ -11,63 +11,92 @@ import urllib.request
 
 
 app = FastAPI(
-    title="YOLOv8 Face Detection API",
-    version="1.0.0"
+    title="Kazem Delsooz AI Computer Vision API",
+    version="2.0.0"
 )
 
 
-# ============================
-# Download YOLO Face Model
-# ============================
+# =========================================================
+# MODEL PATHS
+# =========================================================
 
-MODEL_PATH = "yolov8n-face.pt"
+FACE_MODEL_PATH = "yolov8n-face.pt"
 
 
-MODEL_URL = (
+FACE_MODEL_URL = (
     "https://huggingface.co/Autsadin/yolov8-face/"
     "resolve/main/yolov8n-face.pt"
 )
 
 
-def download_model():
+# =========================================================
+# DOWNLOAD FACE MODEL
+# =========================================================
 
-    if not os.path.exists(MODEL_PATH):
+def download_face_model():
+
+    if not os.path.exists(FACE_MODEL_PATH):
 
         print("Downloading YOLOv8 Face model...")
 
         urllib.request.urlretrieve(
-            MODEL_URL,
-            MODEL_PATH
+            FACE_MODEL_URL,
+            FACE_MODEL_PATH
         )
 
-        print("Model downloaded successfully")
+        print("Face model downloaded successfully")
+
+    else:
+
+        print("Face model already exists")
 
 
-
-download_model()
-
+download_face_model()
 
 
-# Load YOLO Model
+# =========================================================
+# LOAD MODELS
+# =========================================================
 
-model = YOLO(MODEL_PATH)
+print("Loading Face Detection model...")
+
+face_model = YOLO(
+    FACE_MODEL_PATH
+)
+
+print("Face Detection model loaded")
 
 
+print("Loading Object Detection model...")
 
-# ============================
-# Health Check
-# ============================
+# Ultralytics automatically downloads yolov8n.pt
+object_model = YOLO(
+    "yolov8n.pt"
+)
+
+print("Object Detection model loaded")
+
+
+# =========================================================
+# HOME
+# =========================================================
 
 @app.get("/")
 def home():
 
     return {
-        "status": "YOLOv8 Face Detection Running",
-        "model": "yolov8n-face",
-        "developer": "Kazem Delsooz"
+        "status": "AI Computer Vision API Running",
+        "developer": "Kazem Delsooz",
+        "models": [
+            "YOLOv8 Face Detection",
+            "YOLOv8 Object Detection"
+        ]
     }
 
 
+# =========================================================
+# HEALTH
+# =========================================================
 
 @app.get("/health")
 def health():
@@ -77,48 +106,36 @@ def health():
     }
 
 
-
-# ============================
-# Face Detection
-# ============================
+# =========================================================
+# FACE DETECTION
+# =========================================================
 
 @app.post("/detect")
 async def detect_face(
     file: UploadFile = File(...)
 ):
 
-
     image_bytes = await file.read()
-
 
     image = Image.open(
         BytesIO(image_bytes)
     ).convert("RGB")
 
-
     img = np.array(image)
 
 
-
-    # YOLO inference
-
-    results = model(
+    results = face_model(
         img,
         conf=0.5
     )
 
 
-
-    # Draw bounding boxes
-
     annotated_image = results[0].plot()
-
 
 
     output = Image.fromarray(
         annotated_image
     )
-
 
 
     buffer = BytesIO()
@@ -134,17 +151,84 @@ async def detect_face(
     buffer.seek(0)
 
 
-
     face_count = len(
         results[0].boxes
     )
 
 
-
     return StreamingResponse(
+
         buffer,
+
         media_type="image/jpeg",
+
         headers={
             "faces-detected": str(face_count)
         }
+
+    )
+
+
+# =========================================================
+# OBJECT DETECTION
+# =========================================================
+
+@app.post("/object")
+async def detect_objects(
+    file: UploadFile = File(...)
+):
+
+    image_bytes = await file.read()
+
+    image = Image.open(
+        BytesIO(image_bytes)
+    ).convert("RGB")
+
+    img = np.array(image)
+
+
+    # YOLO Object Detection
+
+    results = object_model(
+        img,
+        conf=0.35
+    )
+
+
+    annotated_image = results[0].plot()
+
+
+    output = Image.fromarray(
+        annotated_image
+    )
+
+
+    buffer = BytesIO()
+
+
+    output.save(
+        buffer,
+        format="JPEG",
+        quality=95
+    )
+
+
+    buffer.seek(0)
+
+
+    object_count = len(
+        results[0].boxes
+    )
+
+
+    return StreamingResponse(
+
+        buffer,
+
+        media_type="image/jpeg",
+
+        headers={
+            "objects-detected": str(object_count)
+        }
+
     )
