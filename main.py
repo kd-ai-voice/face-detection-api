@@ -1,5 +1,6 @@
 from fastapi import FastAPI, UploadFile, File
 from fastapi.responses import StreamingResponse
+
 from ultralytics import YOLO
 
 from PIL import Image
@@ -9,16 +10,23 @@ import numpy as np
 import os
 import urllib.request
 
+import torch
+
+
+# کاهش مصرف RAM و CPU
+torch.set_num_threads(1)
+
 
 app = FastAPI(
-    title="Kazem Delsooz AI Computer Vision API",
-    version="2.0.0"
+    title="Kazem Delsooz AI Vision API",
+    version="2.0"
 )
 
 
-# =========================================================
-# MODEL PATHS
-# =========================================================
+
+# =====================================================
+# Model Settings
+# =====================================================
 
 FACE_MODEL_PATH = "yolov8n-face.pt"
 
@@ -29,131 +37,202 @@ FACE_MODEL_URL = (
 )
 
 
-# =========================================================
-# DOWNLOAD FACE MODEL
-# =========================================================
+
+# =====================================================
+# Download Face Model
+# =====================================================
 
 def download_face_model():
 
     if not os.path.exists(FACE_MODEL_PATH):
 
-        print("Downloading YOLOv8 Face model...")
+        print("Downloading Face Model...")
 
         urllib.request.urlretrieve(
             FACE_MODEL_URL,
             FACE_MODEL_PATH
         )
 
-        print("Face model downloaded successfully")
+        print("Face Model Downloaded")
 
     else:
 
-        print("Face model already exists")
+        print("Face Model Exists")
+
 
 
 download_face_model()
 
 
-# =========================================================
-# LOAD MODELS
-# =========================================================
 
-print("Loading Face Detection model...")
+# =====================================================
+# Lazy Loading Models
+# =====================================================
 
-face_model = YOLO(
-    FACE_MODEL_PATH
-)
-
-print("Face Detection model loaded")
+face_model = None
+object_model = None
 
 
-print("Loading Object Detection model...")
 
-# Ultralytics automatically downloads yolov8n.pt
-object_model = YOLO(
-    "yolov8n.pt"
-)
+def get_face_model():
 
-print("Object Detection model loaded")
+    global face_model
 
 
-# =========================================================
-# HOME
-# =========================================================
+    if face_model is None:
+
+        print("Loading YOLO Face Model...")
+
+        face_model = YOLO(
+            FACE_MODEL_PATH
+        )
+
+
+        print("Face Model Loaded")
+
+
+    return face_model
+
+
+
+
+def get_object_model():
+
+    global object_model
+
+
+    if object_model is None:
+
+        print("Loading YOLO Object Model...")
+
+        object_model = YOLO(
+            "yolov8n.pt"
+        )
+
+
+        print("Object Model Loaded")
+
+
+    return object_model
+
+
+
+
+# =====================================================
+# Home
+# =====================================================
 
 @app.get("/")
 def home():
 
     return {
-        "status": "AI Computer Vision API Running",
-        "developer": "Kazem Delsooz",
-        "models": [
+
+        "status":
+        "AI Vision API Running",
+
+        "developer":
+        "Kazem Delsooz",
+
+        "models":[
+
             "YOLOv8 Face Detection",
+
             "YOLOv8 Object Detection"
+
         ]
+
     }
 
 
-# =========================================================
-# HEALTH
-# =========================================================
+
+# =====================================================
+# Health Check
+# =====================================================
 
 @app.get("/health")
 def health():
 
     return {
-        "status": "healthy"
+
+        "status":"healthy"
+
     }
 
 
-# =========================================================
-# FACE DETECTION
-# =========================================================
+
+
+# =====================================================
+# Face Detection
+# =====================================================
 
 @app.post("/detect")
 async def detect_face(
     file: UploadFile = File(...)
 ):
 
+
     image_bytes = await file.read()
+
+
 
     image = Image.open(
         BytesIO(image_bytes)
     ).convert("RGB")
 
+
+
     img = np.array(image)
 
 
-    results = face_model(
+
+    model = get_face_model()
+
+
+
+    results = model(
+
         img,
+
         conf=0.5
+
     )
 
 
-    annotated_image = results[0].plot()
+
+    output_image = results[0].plot()
+
 
 
     output = Image.fromarray(
-        annotated_image
+        output_image
     )
+
 
 
     buffer = BytesIO()
 
 
+
     output.save(
+
         buffer,
+
         format="JPEG",
+
         quality=95
+
     )
+
 
 
     buffer.seek(0)
 
 
-    face_count = len(
+
+    count = len(
         results[0].boxes
     )
+
 
 
     return StreamingResponse(
@@ -163,62 +242,101 @@ async def detect_face(
         media_type="image/jpeg",
 
         headers={
-            "faces-detected": str(face_count)
+
+            "faces-detected":
+            str(count)
+
         }
 
     )
 
 
-# =========================================================
-# OBJECT DETECTION
-# =========================================================
+
+
+
+# =====================================================
+# Object Detection
+# =====================================================
 
 @app.post("/object")
-async def detect_objects(
+async def detect_object(
+
     file: UploadFile = File(...)
+
 ):
+
 
     image_bytes = await file.read()
 
+
+
     image = Image.open(
+
         BytesIO(image_bytes)
+
     ).convert("RGB")
+
+
 
     img = np.array(image)
 
 
-    # YOLO Object Detection
 
-    results = object_model(
+
+    model = get_object_model()
+
+
+
+
+    results = model(
+
         img,
+
         conf=0.35
+
     )
 
 
-    annotated_image = results[0].plot()
+
+
+    output_image = results[0].plot()
+
 
 
     output = Image.fromarray(
-        annotated_image
+
+        output_image
+
     )
+
 
 
     buffer = BytesIO()
 
 
+
     output.save(
+
         buffer,
+
         format="JPEG",
+
         quality=95
+
     )
+
 
 
     buffer.seek(0)
 
 
-    object_count = len(
+
+    count = len(
+
         results[0].boxes
+
     )
+
 
 
     return StreamingResponse(
@@ -228,7 +346,10 @@ async def detect_objects(
         media_type="image/jpeg",
 
         headers={
-            "objects-detected": str(object_count)
+
+            "objects-detected":
+            str(count)
+
         }
 
     )
